@@ -37,7 +37,7 @@ TGENV_DEBUG=1 tgenv install latest
 - **Type:** integer-like flag
 - **Default:** unset
 
-Disables colored output. Set to `1` to force plain text. The variable is also
+Disables colored output. Set it to `1` to force plain text. The variable is also
 honored by the Terragrunt shim when the `-no-color` flag is detected on the
 command line.
 
@@ -58,6 +58,55 @@ under Rosetta).
 ```bash
 TGENV_ARCH=amd64 tgenv install latest
 ```
+
+## TGENV_REMOTE_RELEASES
+
+- **Type:** URL
+- **Default:** unset
+
+Overrides the source used by `tgenv list-remote` to discover available
+Terragrunt versions. When unset, TGEnv keeps the existing behavior and lists
+Git tags directly from `https://github.com/gruntwork-io/terragrunt`.
+
+When set, the URL is fetched with `curl`. The response may be GitHub-style
+release JSON, a VCS tag list such as the one returned by Artifactory, or plain
+text. TGEnv extracts stable semantic versions in the form `v1.2.3` or `1.2.3`,
+removes the optional leading `v`, de-duplicates the result, and sorts it newest
+first.
+
+For example, an Artifactory VCS remote can expose Terragrunt tags with:
+
+```bash
+export TGENV_REMOTE_RELEASES="https://artifactory.example.com/artifactory/api/vcs/tags/github-remote/gruntwork-io/terragrunt"
+tgenv list-remote
+```
+
+This variable changes version discovery only. Use
+`TGENV_REMOTE_DOWNLOAD_FORMAT` to change where the Terragrunt binary itself is
+downloaded from.
+
+## TGENV_REMOTE_DOWNLOAD_FORMAT
+
+- **Type:** URL format string
+- **Default:** `https://github.com/gruntwork-io/terragrunt/releases/download/v{version}/terragrunt_{os}`
+
+Overrides the URL used to download Terragrunt binaries. This is useful when
+Terragrunt releases are mirrored through an internal artifact repository such
+as Artifactory or Nexus.
+
+The format supports these placeholders:
+
+- `{version}` — Terragrunt version without the leading `v`
+- `{os}` — platform and architecture, for example `linux_amd64` or `darwin_arm64`
+
+```bash
+export TGENV_REMOTE_DOWNLOAD_FORMAT="https://artifacts.example.com/terragrunt/v{version}/terragrunt_{os}"
+tgenv install 0.58.8
+```
+
+`TGENV_REMOTE_RELEASES` and `TGENV_REMOTE_DOWNLOAD_FORMAT` can be configured
+independently. This lets an organization use one endpoint for version discovery
+and another endpoint or repository for binary downloads.
 
 ## TGENV_ROOT
 

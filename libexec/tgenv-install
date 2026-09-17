@@ -63,16 +63,21 @@ case "$(uname -s)" in
     ;;
 esac
 
-version_url="https://github.com/gruntwork-io/terragrunt/releases/download/v${version}"
+if [ -n "${TGENV_REMOTE_DOWNLOAD_FORMAT:-}" ]; then
+  download_url_format="${TGENV_REMOTE_DOWNLOAD_FORMAT}"
+else
+  download_url_format='https://github.com/gruntwork-io/terragrunt/releases/download/v{version}/terragrunt_{os}'
+fi
 
-tarball_name="terragrunt_${os}";
+download_url="${download_url_format//\{version\}/${version}}"
+download_url="${download_url//\{os\}/${os}}"
 
 info "Installing Terragrunt v${version}"
 
 mkdir -p "${dst_path}" || error_and_die "Failed to make directory ${dst_path}"
 
-info "Downloading release tarball from ${version_url}/${tarball_name}"
-curlw -# --location-trusted -f -o "${dst_path}/terragrunt" "${version_url}/${tarball_name}" || error_and_die "Tarball download failed"
+info "Downloading release tarball from ${download_url}"
+curlw -# --location-trusted -f -o "${dst_path}/terragrunt" "${download_url}" || error_and_die "Tarball download failed"
 
 chmod +x "${dst_path}/terragrunt" || error_and_die "Change rights failed"
 
