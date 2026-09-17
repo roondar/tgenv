@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-set -e
+set -eo pipefail
 
-[ -n "${TGENV_DEBUG}" ] && set -x
+[ -n "${TGENV_DEBUG:-}" ] && set -x
 source "${TGENV_ROOT}/libexec/helpers"
 
 if [ ${#} -ne 0 ];then
@@ -10,22 +10,48 @@ if [ ${#} -ne 0 ];then
 fi
 
 tmp_list_all_versions_offline=$(mktemp /tmp/tgenv.XXXXXXXX)
+trap 'rm -f "${tmp_list_all_versions_offline}"' EXIT
 
 SORT_CMD="$(command -v gsort 2>/dev/null || command -v sort)"
+remote_releases="${TGENV_REMOTE_RELEASES:-}"
 
-git ls-remote --tags https://github.com/gruntwork-io/terragrunt \
-  | awk '{ print $2 }' \
-  | cut -d "/" -f 3 \
-  | sed 's/v//' \
-  | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
-  | "${SORT_CMD}" -Vr \
-  | tee "${tmp_list_all_versions_offline}"
-return_code=$?
-
-if [ "${return_code}" != 0 ];then
-  [ -f "${tmp_list_all_versions_offline}" ] && rm -f "${tmp_list_all_versions_offline}"
-  warn_and_continue "Failed to list tags for https://github.com/gruntwork-io/terragrunt"
-#   print=`cat ${TGENV_ROOT}/list_all_versions_offline`
+if [ -n "${remote_releases}" ]; then
+  # The custom endpoint may return GitHub-style release JSON, an Artifactory
+  # VCS tag list, or plain text. Split common JSON delimiters into lines, then
+  # keep only exact stable semantic versions so prereleases such as
+  # v1.2.3-beta.1 are not exposed as v1.2.3.
+  if ! curlw -fsSL "${remote_releases}" \
+    | tr '",[]{}:' '\n' \
+    | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+    | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' \
+    | sed 's/^v//' \
+    | "${SORT_CMD}" -Vr -u \
+    > "${tmp_list_all_versions_offline}"; then
+    warn_and_continue "Failed to list Terragrunt releases from ${remote_releases}"
+    exit 1
+  fi
 else
-  mv -f "${tmp_list_all_versions_offline}" "${TGENV_ROOT}/list_all_versions_offline"
+  if ! git ls-remote --tags https://github.com/gruntwork-io/terragrunt \
+    | awk '{ print $2 }' \
+    | cut -d "/" -f 3 \
+    | sed 's/v//' \
+    | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+    | "${SORT_CMD}" -Vr -u \
+    > "${tmp_list_all_versions_offline}"; then
+    warn_and_continue "Failed to list tags for https://github.com/gruntwork-io/terragrunt"
+    exit 1
+  fi
 fi
+
+if [ ! -s "${tmp_list_all_versions_offline}" ]; then
+  if [ -n "${remote_releases}" ]; then
+    warn_and_continue "No Terragrunt versions found at ${remote_releases}"
+  else
+    warn_and_continue "No Terragrunt versions found at https://github.com/gruntwork-io/terragrunt"
+  fi
+  exit 1
+fi
+
+cat "${tmp_list_all_versions_offline}"
+mv -f "${tmp_list_all_versions_offline}" "${TGENV_ROOT}/list_all_versions_offline"
+trap - EXIT
